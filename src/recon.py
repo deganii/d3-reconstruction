@@ -89,7 +89,7 @@ class Reconstruction(object):
 
             Input = np.multiply(subNormAmp, np.exp(1j * np.angle(Output)))
 
-            print("Completing Iteration {0} of {1}  -  {2}%".format(k, self.NumIteration, 100. * k / self.NumIteration))
+            print("Completing Iteration {0} of {1}  -  {2:.2f}%".format(k, self.NumIteration, 100. * k / self.NumIteration))
             if k == self.NumIteration:
                 return Input
 
@@ -105,6 +105,8 @@ class Reconstruction(object):
 
 # Usage
 recon = Reconstruction()
+# change parameters if needed
 # recon.lmbda = 405e-9
 # recon.delta = 2.2e-6
-result = recon.process('../test/Daudi_Kconcentrated.png', '../test/reference_image.png', )
+result = recon.process('../test/Daudi_Kconcentrated.png', '../test/reference_image.png')
+scipy.misc.imsave('../test/output.png', np.abs(result))
