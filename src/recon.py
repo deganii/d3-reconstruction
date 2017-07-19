@@ -90,8 +90,8 @@ class Reconstruction(object):
             Input = np.multiply(subNormAmp, np.exp(1j * np.angle(Output)))
 
             print("Completing Iteration {0} of {1}  -  {2:.2f}%".format(k, self.NumIteration, 100. * k / self.NumIteration))
-            if k == self.NumIteration:
-                return Input
+
+        return Input
 
     def process(self, image_path, reference_path):
         image = np.array(scipy.misc.imread(image_path))
