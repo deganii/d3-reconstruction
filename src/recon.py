@@ -2,7 +2,8 @@ import numpy as np
 import scipy
 import scipy.misc
 import scipy.ndimage
-
+import scipy.io
+import scipy.interpolate
 import skimage
 import skimage.morphology
 
@@ -19,8 +20,30 @@ class Reconstruction(object):
 
     def upsampling(self, data, dx1):
         dx2 = dx1/(2 ** self.UpsampleFactor)
+
         # bicubic resample (order = 3)
-        upsampled = scipy.ndimage.zoom(data, self.UpsampleFactor, order=3)
+        # upsampled = scipy.ndimage.zoom(data, 2 ** self.UpsampleFactor, order=3)
+        # x = np.arange(data.shape[0])
+        # y = np.arange(data.shape[1])
+        # f = scipy.interpolate.interp2d(x, y, data, kind='cubic')
+
+        # x_new = np.linspace(0, data.shape[0], x_size, endpoint=True)
+        # y_new = np.linspace(0, data.shape[0], y_size, endpoint=True)
+
+        # x_new = np.arange(0, data.shape[0], 1 / 2 ** self.UpsampleFactor)
+        # y_new = np.arange(0, data.shape[1], 1 / 2 ** self.UpsampleFactor)
+        # upsampled = f(y_new, x_new)
+
+        x_size = data.shape[0]
+        y_size = data.shape[1]
+        for i in range(self.UpsampleFactor):
+            x_size = (x_size * 2) - 1
+            y_size = (y_size * 2) - 1
+
+        upsampled = scipy.ndimage.zoom(data, [x_size/data.shape[0], y_size/data.shape[1]], order=3)
+
+        self.debug_save_mat(upsampled, 'upsampledPy')
+
         return upsampled, dx2
 
     def ft2(self, g, delta):
@@ -30,6 +53,9 @@ class Reconstruction(object):
         Nx, Ny = np.shape(G)
         return np.fft.ifftshift(np.fft.ifft2(np.fft.ifftshift(G))) * Nx*Ny*dfx*dfy
 
+    def debug_save_mat(self, matrix, mname):
+        scipy.io.savemat(mname + '.mat', {mname: matrix})
+
     def compute(self, data):
         k = 2*np.pi/self.lmbda
         subNormAmp = np.sqrt(data)
@@ -37,6 +63,8 @@ class Reconstruction(object):
 
         if self.UpsampleFactor > 0:
             subNormAmp, self.delta2 = self.upsampling(subNormAmp, self.delta2)
+
+        self.debug_save_mat(subNormAmp, 'subNormAmpPy')
 
         Nx, Ny = np.shape(subNormAmp)
         delta1 = self.delta2
@@ -54,23 +82,25 @@ class Reconstruction(object):
             for m in range(len(fx[0])):
                 Gbp[n, m] = np.exp(1j * k * self.Dz * np.sqrt(1 - self.lmbda ** 2 * fx[n, m] ** 2 - self.lmbda ** 2 * fy[n, m] ** 2))
                 Gfp[n, m] = np.exp(-1j * k * self.Dz * np.sqrt(1 - self.lmbda ** 2 * fx[n, m] ** 2 - self.lmbda ** 2 * fy[n, m] ** 2))
-
+        self.debug_save_mat(Gbp, 'GbpPy')
         Input = subNormAmp
 
         for k in range(self.NumIteration):
             F2 = self.ft2(Input, self.delta2);
             Recon1 = self.ift2(np.multiply(F2, Gbp), dfx, dfy);
-
+            self.debug_save_mat(Recon1, 'Recon1Py')
             if k == 0:
                 # abs(Recon1).*cos(angle(Recon1) == abs(real(Recon1)
                 support = scipy.ndimage.filters.generic_filter(np.abs(np.real(Recon1)), function=np.std, size=(9, 9))
+                self.debug_save_mat(support, 'supportStdPy')
                 support = np.where(support > self.Threshold_objsupp, 1, 0)
+                self.debug_save_mat(support, 'supportThresholdPy')
                 support = scipy.ndimage.binary_dilation(support, structure=skimage.morphology.disk(6))
-
+                self.debug_save_mat(support, 'supportDilatePy')
                 # TODO Fix hole-filling and bwareaopen replacements
                 #segmentation = scipy.ndimage.binary_fill_holes(segmentation - 1)
                 # scipy.ndimage.morphology.binary_opening(support, min_size=64, connectivity=2)
-                skimage.morphology.remove_small_objects(support, min_size=64, connectivity=2)
+                #support = skimage.morphology.remove_small_objects(support, min_size=64, connectivity=2)
 
             Constraint = np.ones(Recon1.shape)
             for p in range(Recon1.shape[0]):
@@ -80,7 +110,7 @@ class Reconstruction(object):
                     # Transmission constraint
                     if np.abs(Recon1[p, q]) > 1:
                         Constraint[p, q] = 1
-
+            self.debug_save_mat(Constraint, 'ConstraintPy')
             Recon1_update =np.multiply(Constraint,  np.exp(1j * np.angle(Recon1)))
 
             F1 = self.ft2(Recon1_update, delta1)
@@ -91,7 +121,10 @@ class Reconstruction(object):
 
             print("Completing Iteration {0} of {1}  -  {2:.2f}%".format(k, self.NumIteration, 100. * k / self.NumIteration))
 
-        return Input
+        F2 = self.ft2(Input, self.delta2)
+        ReconImage = self.ift2(np.multiply(F2, Gbp), dfx, dfy)
+        self.debug_save_mat(ReconImage, 'ReconImagePy')
+        return ReconImage
 
     def process(self, image_path, reference_path):
         image = np.array(scipy.misc.imread(image_path))
