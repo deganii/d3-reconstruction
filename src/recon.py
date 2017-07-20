@@ -20,6 +20,8 @@ class Reconstruction(object):
         self.Dz = 5e-4
         self.Threshold_objsupp = 0.09
         self.NumIteration = 30
+        self.std_filter_size = 9
+        self.dilation_size = 6
 
     def upsampling(self, data, dx1):
         dx2 = dx1/(2 ** self.UpsampleFactor)
@@ -91,12 +93,12 @@ class Reconstruction(object):
             self.debug_save_mat(Recon1, 'Recon1Py')
             if k == 0:
                 # abs(Recon1).*cos(angle(Recon1) == abs(real(Recon1)
-                support = scipy.ndimage.filters.generic_filter(np.abs(np.real(Recon1)), function=np.std, size=(9, 9))
+                support = scipy.ndimage.filters.generic_filter(np.abs(np.real(Recon1)), function=np.std, size=(self.std_filter_size, self.std_filter_size))
                 #support = self.window_stdev(np.abs(np.real(Recon1)),4.5)
                 self.debug_save_mat(support, 'supportStdPy')
                 support = np.where(support > self.Threshold_objsupp, 1, 0)
                 self.debug_save_mat(support, 'supportThresholdPy')
-                support = scipy.ndimage.binary_dilation(support, structure=skimage.morphology.disk(6))
+                support = scipy.ndimage.binary_dilation(support, structure=skimage.morphology.disk(self.dilation_size))
                 self.debug_save_mat(support, 'supportDilatePy')
                 # TODO Fix hole-filling and bwareaopen replacements
                 #segmentation = scipy.ndimage.binary_fill_holes(segmentation - 1)
