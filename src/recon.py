@@ -77,8 +77,8 @@ class Reconstruction(object):
 
         fx, fy = np.meshgrid(np.arange(-Ny / 2, Ny / 2, 1) * dfy,
                              np.arange(-Nx / 2, Nx / 2, 1) * dfx)
-        Gbp = np.zeros(shape=(Nx, Ny), dtype=np.complex_)
-        Gfp = np.zeros(shape=(Nx, Ny), dtype=np.complex_)
+        #Gbp = np.zeros(shape=(Nx, Ny), dtype=np.complex_)
+        #Gfp = np.zeros(shape=(Nx, Ny), dtype=np.complex_)
         Gbp = np.exp(1j * k * self.Dz * np.sqrt(1 - self.lmbda ** 2 * fx ** 2 - self.lmbda ** 2 * fy ** 2))
         Gfp = np.exp(-1j * k * self.Dz * np.sqrt(1 - self.lmbda ** 2 * fx ** 2 - self.lmbda ** 2 * fy ** 2))
         
@@ -103,10 +103,10 @@ class Reconstruction(object):
                 # scipy.ndimage.morphology.binary_opening(support, min_size=64, connectivity=2)
                 #support = skimage.morphology.remove_small_objects(support, min_size=64, connectivity=2)
             Constraint = np.ones(Recon1.shape)
-            Constraint = np.where(support==1,np.abs(Recon1),1)
-            Constraint = np.where(np.abs(Recon1)>1,1,Constraint)
+            Constraint = np.where(support == 1, np.abs(Recon1), 1)
+            Constraint = np.where(np.abs(Recon1) > 1, 1, Constraint)
             self.debug_save_mat(Constraint, 'ConstraintPy')
-            Recon1_update =np.multiply(Constraint,  np.exp(1j * np.angle(Recon1)))
+            Recon1_update = np.multiply(Constraint,  np.exp(1j * np.angle(Recon1)))
 
             F1 = self.ft2(Recon1_update, delta1)
 
