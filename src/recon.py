@@ -91,8 +91,8 @@ class Reconstruction(object):
             self.debug_save_mat(Recon1, 'Recon1Py')
             if k == 0:
                 # abs(Recon1).*cos(angle(Recon1) == abs(real(Recon1)
-                #support = scipy.ndimage.filters.generic_filter(np.abs(np.real(Recon1)), function=np.std, size=(9, 9))
-                support = self.window_stdev(np.abs(np.real(Recon1)),4.5)
+                support = scipy.ndimage.filters.generic_filter(np.abs(np.real(Recon1)), function=np.std, size=(9, 9))
+                #support = self.window_stdev(np.abs(np.real(Recon1)),4.5)
                 self.debug_save_mat(support, 'supportStdPy')
                 support = np.where(support > self.Threshold_objsupp, 1, 0)
                 self.debug_save_mat(support, 'supportThresholdPy')
@@ -103,13 +103,8 @@ class Reconstruction(object):
                 # scipy.ndimage.morphology.binary_opening(support, min_size=64, connectivity=2)
                 #support = skimage.morphology.remove_small_objects(support, min_size=64, connectivity=2)
             Constraint = np.ones(Recon1.shape)
-            for p in range(Recon1.shape[0]):
-                for q in range(Recon1.shape[1]):
-                    if support[p, q] == 1:
-                        Constraint[p, q] = np.abs(Recon1[p, q])
-                    # Transmission constraint
-                    if np.abs(Recon1[p, q]) > 1:
-                        Constraint[p, q] = 1
+            Constraint = np.where(support==1,np.abs(Recon1),1)
+            Constraint = np.where(np.abs(Recon1)>1,1,Constraint)
             self.debug_save_mat(Constraint, 'ConstraintPy')
             Recon1_update =np.multiply(Constraint,  np.exp(1j * np.angle(Recon1)))
 
@@ -149,4 +144,3 @@ recon = Reconstruction()
 # recon.delta = 2.2e-6
 result = recon.process('test image.png', 'ref.png')
 scipy.misc.imsave('output.png', np.abs(result))
-
