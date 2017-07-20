@@ -5,7 +5,10 @@ import scipy.ndimage
 import scipy.io
 import scipy.interpolate
 import skimage
+import time
+import cv2
 import skimage.morphology
+from scipy.ndimage.filters import uniform_filter
 
 class Reconstruction(object):
     def __init__(self):
@@ -72,16 +75,13 @@ class Reconstruction(object):
         dfx = 1 / (Nx * self.delta2)
         dfy = 1 / (Ny * self.delta2)
 
-        fx, fy = np.meshgrid(np.arange(-Ny / 2, Ny / 2 - 1, 1) * dfy,
-                             np.arange(-Nx / 2, Nx / 2 - 1, 1) * dfx)
-
+        fx, fy = np.meshgrid(np.arange(-Ny / 2, Ny / 2, 1) * dfy,
+                             np.arange(-Nx / 2, Nx / 2, 1) * dfx)
         Gbp = np.zeros(shape=(Nx, Ny), dtype=np.complex_)
         Gfp = np.zeros(shape=(Nx, Ny), dtype=np.complex_)
-
-        for n in range(len(fx)):
-            for m in range(len(fx[0])):
-                Gbp[n, m] = np.exp(1j * k * self.Dz * np.sqrt(1 - self.lmbda ** 2 * fx[n, m] ** 2 - self.lmbda ** 2 * fy[n, m] ** 2))
-                Gfp[n, m] = np.exp(-1j * k * self.Dz * np.sqrt(1 - self.lmbda ** 2 * fx[n, m] ** 2 - self.lmbda ** 2 * fy[n, m] ** 2))
+        Gbp = np.exp(1j * k * self.Dz * np.sqrt(1 - self.lmbda ** 2 * fx ** 2 - self.lmbda ** 2 * fy ** 2))
+        Gfp = np.exp(-1j * k * self.Dz * np.sqrt(1 - self.lmbda ** 2 * fx ** 2 - self.lmbda ** 2 * fy ** 2))
+        
         self.debug_save_mat(Gbp, 'GbpPy')
         Input = subNormAmp
 
@@ -91,7 +91,8 @@ class Reconstruction(object):
             self.debug_save_mat(Recon1, 'Recon1Py')
             if k == 0:
                 # abs(Recon1).*cos(angle(Recon1) == abs(real(Recon1)
-                support = scipy.ndimage.filters.generic_filter(np.abs(np.real(Recon1)), function=np.std, size=(9, 9))
+                #support = scipy.ndimage.filters.generic_filter(np.abs(np.real(Recon1)), function=np.std, size=(9, 9))
+                support = self.window_stdev(np.abs(np.real(Recon1)),4.5)
                 self.debug_save_mat(support, 'supportStdPy')
                 support = np.where(support > self.Threshold_objsupp, 1, 0)
                 self.debug_save_mat(support, 'supportThresholdPy')
@@ -101,7 +102,6 @@ class Reconstruction(object):
                 #segmentation = scipy.ndimage.binary_fill_holes(segmentation - 1)
                 # scipy.ndimage.morphology.binary_opening(support, min_size=64, connectivity=2)
                 #support = skimage.morphology.remove_small_objects(support, min_size=64, connectivity=2)
-
             Constraint = np.ones(Recon1.shape)
             for p in range(Recon1.shape[0]):
                 for q in range(Recon1.shape[1]):
@@ -132,6 +132,12 @@ class Reconstruction(object):
         norm_factor = np.mean(ref) / np.mean(image)
         data = np.divide(image, ref) * norm_factor
         return self.compute(data)
+    
+    def window_stdev(self, arr, radius):
+        diameter = int(round(radius*2))
+        c1 = uniform_filter(arr, diameter, mode='constant', origin=-int(round(radius)))
+        c2 = uniform_filter(arr*arr, diameter, mode='constant', origin=-int(round(radius)))
+        return ((c2 - c1*c1)**.5)[:-diameter+1,:-diameter+1]
 
 
 
@@ -141,5 +147,6 @@ recon = Reconstruction()
 # change parameters if needed
 # recon.lmbda = 405e-9
 # recon.delta = 2.2e-6
-result = recon.process('../test/Daudi_Kconcentrated.png', '../test/reference_image.png')
-scipy.misc.imsave('../test/output.png', np.abs(result))
+result = recon.process('test image.png', 'ref.png')
+scipy.misc.imsave('output.png', np.abs(result))
+
