@@ -6,7 +6,8 @@ import scipy.io
 import scipy.interpolate
 import skimage
 import time
-#import cv2
+import cv2
+import os.path
 import skimage.morphology
 from scipy.ndimage.filters import uniform_filter
 
@@ -23,6 +24,7 @@ class Reconstruction(object):
         self.NumIteration = 30
         self.std_filter_size = 9
         self.dilation_size = 6
+        self.debug = False
 
     def upsampling(self, data, dx1):
         dx2 = dx1 / (2 ** self.UpsampleFactor)
@@ -40,7 +42,16 @@ class Reconstruction(object):
         return np.fft.ifftshift(np.fft.ifft2(np.fft.ifftshift(G))) * Nx * Ny * dfx * dfy
 
     def debug_save_mat(self, matrix, mname):
-        scipy.io.savemat(mname + '.mat', {mname: matrix})
+        if self.debug:
+            if matrix is None:
+                matrix = np.array([0])
+
+            file_path = '../debug/' + mname + '.mat'
+            directory = os.path.dirname(file_path)
+            if not os.path.exists(directory):
+                os.makedirs(directory)
+
+            scipy.io.savemat(file_path, {mname: matrix})
 
     def compute(self, data):
         k = 2 * np.pi / self.lmbda
@@ -60,29 +71,31 @@ class Reconstruction(object):
 
         fx, fy = np.meshgrid(np.arange(-Ny / 2, Ny / 2, 1) * dfy,
                              np.arange(-Nx / 2, Nx / 2, 1) * dfx)
-        # Gbp = np.zeros(shape=(Nx, Ny), dtype=np.complex_)
-        # Gfp = np.zeros(shape=(Nx, Ny), dtype=np.complex_)
-        Gbp = np.exp(1j * k * self.Dz * np.sqrt(1 - self.lmbda ** 2 * fx ** 2 - self.lmbda ** 2 * fy ** 2))
-        Gfp = np.exp(-1j * k * self.Dz * np.sqrt(1 - self.lmbda ** 2 * fx ** 2 - self.lmbda ** 2 * fy ** 2))
+
+        Gbp = np.exp((1j * k * self.Dz) * np.sqrt(1 - self.lmbda ** 2 * fx ** 2 - self.lmbda ** 2 * fy ** 2))
+        Gfp = np.exp((-1j * k * self.Dz) * np.sqrt(1 - self.lmbda ** 2 * fx ** 2 - self.lmbda ** 2 * fy ** 2))
 
         self.debug_save_mat(Gbp, 'GbpPy')
         Input = subNormAmp
 
         for k in range(self.NumIteration):
-            F2 = self.ft2(Input, self.delta2);
-            Recon1 = self.ift2(np.multiply(F2, Gbp), dfx, dfy);
+            F2 = self.ft2(Input, self.delta2)
+            Recon1 = self.ift2(np.multiply(F2, Gbp), dfx, dfy)
             self.debug_save_mat(Recon1, 'Recon1Py')
             if k == 0:
                 # abs(Recon1).*cos(angle(Recon1) == abs(real(Recon1)
-                support = scipy.ndimage.filters.generic_filter(np.abs(np.real(Recon1)), function=np.std,
-                                                               size=(self.std_filter_size, self.std_filter_size))
-                # support = self.window_stdev(np.abs(np.real(Recon1)),4.5)
+                support = self.window_stdev(np.abs(np.real(Recon1)), self.std_filter_size / 2)
                 self.debug_save_mat(support, 'supportStdPy')
                 support = np.where(support > self.Threshold_objsupp, 1, 0)
                 self.debug_save_mat(support, 'supportThresholdPy')
                 support = scipy.ndimage.binary_dilation(support, structure=skimage.morphology.disk(self.dilation_size))
                 self.debug_save_mat(support, 'supportDilatePy')
-                # TODO Fix hole-filling and bwareaopen replacements
+
+                # find circles in thresholded image
+                #self.hough_circle_transform(support)
+
+
+                # # TODO Fix hole-filling and bwareaopen replacements
                 # segmentation = scipy.ndimage.binary_fill_holes(segmentation - 1)
                 # scipy.ndimage.morphology.binary_opening(support, min_size=64, connectivity=2)
                 # support = skimage.morphology.remove_small_objects(support, min_size=64, connectivity=2)
@@ -117,7 +130,25 @@ class Reconstruction(object):
         diameter = int(round(radius * 2))
         c1 = uniform_filter(arr, diameter, mode='constant', origin=-int(round(radius)))
         c2 = uniform_filter(arr * arr, diameter, mode='constant', origin=-int(round(radius)))
-        return ((c2 - c1 * c1) ** .5)[:-diameter + 1, :-diameter + 1]
+        c_std = ((c2 - c1 * c1) ** .5)[:-diameter + 1, :-diameter + 1]
+        # symmetric padding to match Matlab stdfilt:
+        return np.pad(c_std, int(round(radius)), 'symmetric')
+
+    def hough_circle_transform(self, support):
+        support8bit = np.array(support * 255, dtype=np.uint8)
+        circles = cv2.HoughCircles(support8bit, cv2.HOUGH_GRADIENT,
+                                   1, 20, param1=50, param2=30, minRadius=0, maxRadius=0)
+        self.debug_save_mat(circles, 'circlesPy')
+
+        if circles is not None:
+            circles = np.uint16(np.around(circles))
+            for i in circles[0, :]:
+                # draw the outer circle
+                cv2.circle(support8bit, (i[0], i[1]), i[2], (0, 255, 0), 2)
+                # draw the center of the circle
+                cv2.circle(support8bit, (i[0], i[1]), 2, (0, 0, 255), 3)
+        self.debug_save_mat(support8bit, 'supportCirclesPy')
+        return support8bit
 
 
 # Usage
@@ -125,5 +156,8 @@ recon = Reconstruction()
 # change parameters if needed
 # recon.lmbda = 405e-9
 # recon.delta = 2.2e-6
+recon.debug = True
+t1 = time.time()
 result = recon.process('../test/Daudi_Kconcentrated.png', '../test/reference_image.png')
+print("Reconstruction runs in: ", t1 - time.time())
 scipy.misc.imsave('output.png', np.abs(result))
