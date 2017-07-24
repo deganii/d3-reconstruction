@@ -35,7 +35,7 @@ class Reconstruction(object):
         return upsampled, dx2
 
     def ft2(self, g, delta):
-        return np.fft.fftshift(np.fft.fft2((g))) * delta ** 2
+        return np.fft.fftshift(np.fft.fft2((np.fft.fftshift(g)))) * delta ** 2
 
     def ift2(self, G, dfx, dfy):
         Nx, Ny = np.shape(G)
