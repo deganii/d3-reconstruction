@@ -16,11 +16,11 @@ class Reconstruction(object):
     def __init__(self):
         super(object).__init__()
         # lambda is the wavelength in meters (i.e. 405nm = UV light)
-        self.lmbda = 405e-9
+        self.lmbda = 625e-9
         self.UpsampleFactor = 2
         self.delta2 = 2.2e-6
         self.Dz = 5e-4
-        self.Threshold_objsupp = 0.09
+        self.Threshold_objsupp = 0.06
         self.NumIteration = 30
         self.std_filter_size = 9
         self.dilation_size = 6
@@ -54,6 +54,9 @@ class Reconstruction(object):
             scipy.io.savemat(file_path, {mname: matrix})
 
     def compute(self, data):
+        ft2 = self.ft2
+        ift2 = self.ift2
+        mul = np.multiply
         k = 2 * np.pi / self.lmbda
         subNormAmp = np.sqrt(data)
         # delta_prev = self.delta2
@@ -77,46 +80,42 @@ class Reconstruction(object):
 
         self.debug_save_mat(Gbp, 'GbpPy')
         Input = subNormAmp
-
+        
+        F2 = ft2(Input, self.delta2)
+        Recon1 = ift2(mul(F2, Gbp), dfx, dfy)
+        
+        support = self.window_stdev(np.abs(np.real(Recon1)), self.std_filter_size / 2)
+        self.debug_save_mat(support, 'supportStdPy')
+        
+        support = np.where(support > self.Threshold_objsupp, 1, 0)
+        self.debug_save_mat(support, 'supportThresholdPy')
+        
+        support = scipy.ndimage.binary_dilation(support, structure=skimage.morphology.disk(self.dilation_size))
+        self.debug_save_mat(support, 'supportDilatePy')
         for k in range(self.NumIteration):
-            F2 = self.ft2(Input, self.delta2)
-            Recon1 = self.ift2(np.multiply(F2, Gbp), dfx, dfy)
-            self.debug_save_mat(Recon1, 'Recon1Py')
-            if k == 0:
-                # abs(Recon1).*cos(angle(Recon1) == abs(real(Recon1)
-                support = self.window_stdev(np.abs(np.real(Recon1)), self.std_filter_size / 2)
-                self.debug_save_mat(support, 'supportStdPy')
-                support = np.where(support > self.Threshold_objsupp, 1, 0)
-                self.debug_save_mat(support, 'supportThresholdPy')
-                support = scipy.ndimage.binary_dilation(support, structure=skimage.morphology.disk(self.dilation_size))
-                self.debug_save_mat(support, 'supportDilatePy')
-
-                # find circles in thresholded image
-                #self.hough_circle_transform(support)
-
-
-                # # TODO Fix hole-filling and bwareaopen replacements
-                # segmentation = scipy.ndimage.binary_fill_holes(segmentation - 1)
-                # scipy.ndimage.morphology.binary_opening(support, min_size=64, connectivity=2)
-                # support = skimage.morphology.remove_small_objects(support, min_size=64, connectivity=2)
+            t1 = time.time()
             Constraint = np.ones(Recon1.shape)
             Constraint = np.where(support == 1, np.abs(Recon1), 1)
             Constraint = np.where(np.abs(Recon1) > 1, 1, Constraint)
-            self.debug_save_mat(Constraint, 'ConstraintPy')
-            Recon1_update = np.multiply(Constraint, np.exp(1j * np.angle(Recon1)))
-
-            F1 = self.ft2(Recon1_update, delta1)
-
-            Output = self.ift2(np.multiply(F1, Gfp), dfx, dfy)
-
-            Input = np.multiply(subNormAmp, np.exp(1j * np.angle(Output)))
-
+            
+            Recon1_update = mul(Constraint, np.exp(1j * np.angle(Recon1)))
+            
+            F1 = ft2(Recon1_update, delta1)
+            
+            Output = ift2(mul(F1, Gfp), dfx, dfy)
+            
+            Input = mul(subNormAmp, np.exp(1j * np.angle(Output)))
+            
+            F2 = ft2(Input, self.delta2)
+            
+            Recon1 = ift2(mul(F2, Gbp), dfx, dfy)
             print("Completing Iteration {0} of {1}  -  {2:.2f}%".format(k, self.NumIteration,
-                                                                        100. * k / self.NumIteration))
-
-        F2 = self.ft2(Input, self.delta2)
-        ReconImage = self.ift2(np.multiply(F2, Gbp), dfx, dfy)
-        self.debug_save_mat(ReconImage, 'ReconImagePy')
+                                                                        100.*k / self.NumIteration),
+                                                                          " -  Time: {:.2f}s".format(time.time()-t1))
+        
+        F2 = ft2(Input, self.delta2)
+        ReconImage = ift2(mul(F2, Gbp), dfx, dfy)
+        
         return ReconImage
 
     def process(self, image_path, reference_path):
@@ -128,18 +127,18 @@ class Reconstruction(object):
 
     def window_stdev(self, arr, radius):
         diameter = int(round(radius * 2))
-        c1 = uniform_filter(arr, diameter, mode='constant', origin=-int(round(radius)))
-        c2 = uniform_filter(arr * arr, diameter, mode='constant', origin=-int(round(radius)))
+        radius = int(round(radius))
+        c1 = uniform_filter(arr, diameter, mode='constant', origin=-radius)
+        c2 = uniform_filter(arr * arr, diameter, mode='constant', origin=-radius)
         c_std = ((c2 - c1 * c1) ** .5)[:-diameter + 1, :-diameter + 1]
         # symmetric padding to match Matlab stdfilt:
-        return np.pad(c_std, int(round(radius)), 'symmetric')
-
+        return np.pad(c_std, radius, 'symmetric')
+   
     def hough_circle_transform(self, support):
         support8bit = np.array(support * 255, dtype=np.uint8)
         circles = cv2.HoughCircles(support8bit, cv2.HOUGH_GRADIENT,
-                                   1, 20, param1=50, param2=30, minRadius=0, maxRadius=0)
+                                   1, 20, param1=50, param2=30, minRadius=0, maxRadius=6)
         self.debug_save_mat(circles, 'circlesPy')
-
         if circles is not None:
             circles = np.uint16(np.around(circles))
             for i in circles[0, :]:
@@ -154,10 +153,10 @@ class Reconstruction(object):
 # Usage
 recon = Reconstruction()
 # change parameters if needed
-# recon.lmbda = 405e-9
+# recon.lmbda = 625e-9
 # recon.delta = 2.2e-6
 recon.debug = True
 t1 = time.time()
-result = recon.process('../test/Daudi_Kconcentrated.png', '../test/reference_image.png')
-print("Reconstruction runs in: ", t1 - time.time())
+result = recon.process('test recon.png', 'ref.png')
+print("Reconstruction runs in:", time.time() - t1,"seconds")
 scipy.misc.imsave('output.png', np.abs(result))
