@@ -84,9 +84,10 @@ class Reconstruction(object):
         
         F2 = ft2(Input, self.delta2)
         Recon1 = ift2(mul(F2, Gbp), dfx, dfy)
-        
-        support = self.window_stdev(np.abs(np.real(Recon1)), self.std_filter_size / 2)
-        self.debug_save_mat(support, 'supportStdPy')
+
+        # np.abs(np.real(Recon1))
+        support = self.window_stdev(mul(np.abs(Recon1),np.cos(np.angle(Recon1))), self.std_filter_size / 2)
+        self.debug_save_mat(support, 'supportStdPy' + str(self.std_filter_size))
         
         support = np.where(support > self.Threshold_objsupp, 1, 0)
         self.debug_save_mat(support, 'supportThresholdPy')
@@ -98,12 +99,12 @@ class Reconstruction(object):
 
         # corresponds to imfill(support,'holes');
         support = scipy.ndimage.binary_fill_holes(support)
-
+        self.debug_save_mat(support, 'supportFillHoles')
         #bRemove = time.time()
 
         # corresponds to imfill bwareaopen(support,300)
         skimage.morphology.remove_small_objects(support, min_size=self.min_small_obj_size, connectivity=2, in_place=True)
-
+        self.debug_save_mat(support, 'supportRemoveSmallObj')
         #after = time.time()
         #print("Fill Time:  {:.2f}s -- Remove Small Objects Time:  {:.2f}s".format(after - bFill, after - bRemove))
 
@@ -150,7 +151,14 @@ class Reconstruction(object):
         c2 = uniform_filter(arr * arr, diameter, mode='constant', origin=-radius)
         c_std = ((c2 - c1 * c1) ** .5)[:-diameter + 1, :-diameter + 1]
         # symmetric padding to match Matlab stdfilt:
-        return np.pad(c_std, radius, 'symmetric')
+        px = arr.shape[0] - c_std.shape[0]
+        py = arr.shape[1] - c_std.shape[1]
+
+        left = int(np.floor(px/2))
+        right = int(np.ceil(px/2))
+        top = int(np.floor(py/2))
+        bottom = int(np.ceil(py/2))
+        return np.pad(c_std, [(left, right), (top,bottom)], 'symmetric')
    
     def hough_circle_transform(self, support):
         support8bit = np.array(support * 255, dtype=np.uint8)
