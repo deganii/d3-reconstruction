@@ -25,6 +25,7 @@ class Reconstruction(object):
         self.std_filter_size = 9
         self.dilation_size = 6
         self.debug = False
+        self.min_small_obj_size = 300
 
     def upsampling(self, data, dx1):
         dx2 = dx1 / (2 ** self.UpsampleFactor)
@@ -101,7 +102,7 @@ class Reconstruction(object):
         #bRemove = time.time()
 
         # corresponds to imfill bwareaopen(support,300)
-        skimage.morphology.remove_small_objects(support, min_size=300, connectivity=2, in_place=True)
+        skimage.morphology.remove_small_objects(support, min_size=self.min_small_obj_size, connectivity=2, in_place=True)
 
         #after = time.time()
         #print("Fill Time:  {:.2f}s -- Remove Small Objects Time:  {:.2f}s".format(after - bFill, after - bRemove))
