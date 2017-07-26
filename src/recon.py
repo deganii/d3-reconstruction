@@ -14,7 +14,8 @@ from scipy.ndimage.filters import uniform_filter
 
 class Reconstruction(object):
     def __init__(self):
-        super(object).__init__()
+        #What does this call to super do, and why is it necessary?
+        #super(object).__init__() 
         # lambda is the wavelength in meters (i.e. 405nm = UV light)
         self.lmbda = 625e-9
         self.UpsampleFactor = 2
@@ -31,6 +32,7 @@ class Reconstruction(object):
         dx2 = dx1 / (2 ** self.UpsampleFactor)
         x_size = ((2 ** self.UpsampleFactor) * data.shape[0]) - (2 ** (self.UpsampleFactor) - 1)
         y_size = ((2 ** self.UpsampleFactor) * data.shape[1]) - (2 ** (self.UpsampleFactor) - 1)
+        data = data.astype("float32")
         upsampled = scipy.ndimage.zoom(data, [x_size / data.shape[0], y_size / data.shape[1]], order=3)
         self.debug_save_mat(upsampled, 'upsampledPy')
         return upsampled, dx2
@@ -55,6 +57,7 @@ class Reconstruction(object):
             scipy.io.savemat(file_path, {mname: matrix})
 
     def compute(self, data):
+        self.__init__()
         ft2 = self.ft2
         ift2 = self.ift2
         mul = np.multiply
@@ -75,73 +78,72 @@ class Reconstruction(object):
 
         fx, fy = np.meshgrid(np.arange(-Ny / 2, Ny / 2, 1) * dfy,
                              np.arange(-Nx / 2, Nx / 2, 1) * dfx)
-
+        #print(1 - self.lmbda ** 2 * fx ** 2 - self.lmbda ** 2 * fy ** 2)
         Gbp = np.exp((1j * k * self.Dz) * np.sqrt(1 - self.lmbda ** 2 * fx ** 2 - self.lmbda ** 2 * fy ** 2))
         Gfp = np.exp((-1j * k * self.Dz) * np.sqrt(1 - self.lmbda ** 2 * fx ** 2 - self.lmbda ** 2 * fy ** 2))
 
         self.debug_save_mat(Gbp, 'GbpPy')
         Input = subNormAmp
-        
+
         F2 = ft2(Input, self.delta2)
         Recon1 = ift2(mul(F2, Gbp), dfx, dfy)
 
         # np.abs(np.real(Recon1))
-        support = self.window_stdev(mul(np.abs(Recon1),np.cos(np.angle(Recon1))), self.std_filter_size / 2)
+        support = self.window_stdev(mul(np.abs(Recon1), np.cos(np.angle(Recon1))), self.std_filter_size / 2)
         self.debug_save_mat(support, 'supportStdPy' + str(self.std_filter_size))
-        
+
         support = np.where(support > self.Threshold_objsupp, 1, 0)
         self.debug_save_mat(support, 'supportThresholdPy')
-        
+
         support = scipy.ndimage.binary_dilation(support, structure=skimage.morphology.disk(self.dilation_size))
         self.debug_save_mat(support, 'supportDilatePy')
 
-        #bFill = time.time()
+        # bFill = time.time()
 
         # corresponds to imfill(support,'holes');
         support = scipy.ndimage.binary_fill_holes(support)
         self.debug_save_mat(support, 'supportFillHoles')
-        #bRemove = time.time()
+        # bRemove = time.time()
 
         # corresponds to imfill bwareaopen(support,300)
-        skimage.morphology.remove_small_objects(support, min_size=self.min_small_obj_size, connectivity=2, in_place=True)
+        skimage.morphology.remove_small_objects(support, min_size=self.min_small_obj_size, connectivity=2,
+                                                in_place=True)
         self.debug_save_mat(support, 'supportRemoveSmallObj')
-        #after = time.time()
-        #print("Fill Time:  {:.2f}s -- Remove Small Objects Time:  {:.2f}s".format(after - bFill, after - bRemove))
+        # after = time.time()
+        # print("Fill Time:  {:.2f}s -- Remove Small Objects Time:  {:.2f}s".format(after - bFill, after - bRemove))
 
 
         for k in range(self.NumIteration):
-            t1 = time.time()
-            #Constraint = np.ones(Recon1.shape)
+            #t1 = time.time()
             Constraint = np.where(support == 1, np.abs(Recon1), 1)
             Constraint = np.where(np.abs(Recon1) > 1, 1, Constraint)
-            
+
             Recon1_update = mul(Constraint, np.exp(1j * np.angle(Recon1)))
-            
+
             F1 = ft2(Recon1_update, delta1)
-            
+
             Output = ift2(mul(F1, Gfp), dfx, dfy)
-            
+
             Input = mul(subNormAmp, np.exp(1j * np.angle(Output)))
-            
+
             F2 = ft2(Input, self.delta2)
-            
+
             Recon1 = ift2(mul(F2, Gbp), dfx, dfy)
-            print("Completing Iteration {0} of {1}  -  {2:.2f}%".format(k, self.NumIteration,
-                                                                        100.*k / self.NumIteration),
-                                                                          " -  Time: {:.2f}s".format(time.time()-t1))
-
-
+            """print("Completing Iteration {0} of {1}  -  {2:.2f}%".format(k, self.NumIteration,
+                                                                        100. * k / self.NumIteration),
+                                                                         " -  Time: {:.2f}s".format(time.time() - t1))"""
 
         F2 = ft2(Input, self.delta2)
         ReconImage = ift2(mul(F2, Gbp), dfx, dfy)
-        
+
         return ReconImage
 
     def process(self, image_path, reference_path):
         image = np.array(scipy.misc.imread(image_path))
         ref = np.array(scipy.misc.imread(reference_path))
-        norm_factor = np.mean(ref) / np.mean(image)
-        data = np.divide(image, ref) * norm_factor
+        norm_factor = np.mean(ref) / np.multiply(np.mean(image),ref)
+        #data = np.divide(image, ref) * norm_factor
+        data = np.multiply(image,norm_factor)
         return self.compute(data)
 
     def window_stdev(self, arr, radius):
@@ -154,12 +156,12 @@ class Reconstruction(object):
         px = arr.shape[0] - c_std.shape[0]
         py = arr.shape[1] - c_std.shape[1]
 
-        left = int(np.floor(px/2))
-        right = int(np.ceil(px/2))
-        top = int(np.floor(py/2))
-        bottom = int(np.ceil(py/2))
-        return np.pad(c_std, [(left, right), (top,bottom)], 'symmetric')
-   
+        left = int(np.floor(px / 2))
+        right = int(np.ceil(px / 2))
+        top = int(np.floor(py / 2))
+        bottom = int(np.ceil(py / 2))
+        return np.pad(c_std, [(left, right), (top, bottom)], 'symmetric')
+
     def hough_circle_transform(self, support):
         support8bit = np.array(support * 255, dtype=np.uint8)
         circles = cv2.HoughCircles(support8bit, cv2.HOUGH_GRADIENT,
@@ -177,12 +179,13 @@ class Reconstruction(object):
 
 
 # Usage
+"""
 recon = Reconstruction()
 # change parameters if needed
 # recon.lmbda = 625e-9
 # recon.delta = 2.2e-6
 recon.debug = True
 t1 = time.time()
-result = recon.process('../test/Daudi_Kconcentrated.png', '../test/reference_image.png')
-print("Reconstruction runs in:", time.time() - t1,"seconds")
-scipy.misc.imsave('output.png', np.abs(result))
+result = recon.process('test recon.png', 'ref.png')
+print("Reconstruction runs in:", time.time() - t1, "seconds")
+scipy.misc.imsave('output.png', np.abs(result))"""
