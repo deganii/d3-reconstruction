@@ -92,9 +92,24 @@ class Reconstruction(object):
         
         support = scipy.ndimage.binary_dilation(support, structure=skimage.morphology.disk(self.dilation_size))
         self.debug_save_mat(support, 'supportDilatePy')
+
+        #bFill = time.time()
+
+        # corresponds to imfill(support,'holes');
+        support = scipy.ndimage.binary_fill_holes(support)
+
+        #bRemove = time.time()
+
+        # corresponds to imfill bwareaopen(support,300)
+        skimage.morphology.remove_small_objects(support, min_size=300, connectivity=2, in_place=True)
+
+        #after = time.time()
+        #print("Fill Time:  {:.2f}s -- Remove Small Objects Time:  {:.2f}s".format(after - bFill, after - bRemove))
+
+
         for k in range(self.NumIteration):
             t1 = time.time()
-            Constraint = np.ones(Recon1.shape)
+            #Constraint = np.ones(Recon1.shape)
             Constraint = np.where(support == 1, np.abs(Recon1), 1)
             Constraint = np.where(np.abs(Recon1) > 1, 1, Constraint)
             
@@ -112,7 +127,9 @@ class Reconstruction(object):
             print("Completing Iteration {0} of {1}  -  {2:.2f}%".format(k, self.NumIteration,
                                                                         100.*k / self.NumIteration),
                                                                           " -  Time: {:.2f}s".format(time.time()-t1))
-        
+
+
+
         F2 = ft2(Input, self.delta2)
         ReconImage = ift2(mul(F2, Gbp), dfx, dfy)
         
@@ -157,6 +174,6 @@ recon = Reconstruction()
 # recon.delta = 2.2e-6
 recon.debug = True
 t1 = time.time()
-result = recon.process('test recon.png', 'ref.png')
+result = recon.process('../test/Daudi_Kconcentrated.png', '../test/reference_image.png')
 print("Reconstruction runs in:", time.time() - t1,"seconds")
 scipy.misc.imsave('output.png', np.abs(result))
