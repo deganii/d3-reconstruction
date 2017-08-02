@@ -15,13 +15,13 @@ from scipy.ndimage.filters import uniform_filter
 class Reconstruction(object):
     def __init__(self):
         #What does this call to super do, and why is it necessary?
-        #super(object).__init__() 
+        #super(object).__init__()
         # lambda is the wavelength in meters (i.e. 405nm = UV light)
         self.lmbda = 625e-9
         self.UpsampleFactor = 2
         self.delta2 = 2.2e-6
         self.Dz = 5e-4
-        self.Threshold_objsupp = 0.06
+        self.Threshold_objsupp = 0.1
         self.NumIteration = 30
         self.std_filter_size = 9
         self.dilation_size = 6
@@ -111,13 +111,10 @@ class Reconstruction(object):
         self.debug_save_mat(support, 'supportRemoveSmallObj')
         # after = time.time()
         # print("Fill Time:  {:.2f}s -- Remove Small Objects Time:  {:.2f}s".format(after - bFill, after - bRemove))
-
-
         for k in range(self.NumIteration):
             #t1 = time.time()
             Constraint = np.where(support == 1, np.abs(Recon1), 1)
             Constraint = np.where(np.abs(Recon1) > 1, 1, Constraint)
-
             Recon1_update = mul(Constraint, np.exp(1j * np.angle(Recon1)))
 
             F1 = ft2(Recon1_update, delta1)
@@ -131,16 +128,17 @@ class Reconstruction(object):
             Recon1 = ift2(mul(F2, Gbp), dfx, dfy)
             """print("Completing Iteration {0} of {1}  -  {2:.2f}%".format(k, self.NumIteration,
                                                                         100. * k / self.NumIteration),
-                                                                         " -  Time: {:.2f}s".format(time.time() - t1))"""
+                                                                         " -  Time: {:.2f}s".format(time.time() - t1))
 
+        """
         F2 = ft2(Input, self.delta2)
         ReconImage = ift2(mul(F2, Gbp), dfx, dfy)
 
-        return ReconImage
+        return ReconImage, support
 
     def process(self, image_path, reference_path):
-        image = np.array(scipy.misc.imread(image_path))
-        ref = np.array(scipy.misc.imread(reference_path))
+        image = cv2.imread(image_path,0)
+        ref = cv2.imread(reference_path,0)
         norm_factor = np.mean(ref) / np.multiply(np.mean(image),ref)
         #data = np.divide(image, ref) * norm_factor
         data = np.multiply(image,norm_factor)
@@ -186,6 +184,6 @@ recon = Reconstruction()
 # recon.delta = 2.2e-6
 recon.debug = True
 t1 = time.time()
-result = recon.process('test recon.png', 'ref.png')
+result = recon.process('cell snapshot.png', 'snapshot ref.png')
 print("Reconstruction runs in:", time.time() - t1, "seconds")
 scipy.misc.imsave('output.png', np.abs(result))"""
