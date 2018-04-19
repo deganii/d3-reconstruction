@@ -14,11 +14,6 @@ from scipy.ndimage.filters import uniform_filter
 
 class Reconstruction(object):
     def __init__(self):
-<<<<<<< HEAD
-=======
-        #What does this call to super do, and why is it necessary?
-        #super(object).__init__()
->>>>>>> c0407452b224d6f676fa923e53c8248a21b8c88e
         # lambda is the wavelength in meters (i.e. 405nm = UV light)
         self.lmbda = 625e-9
         self.UpsampleFactor = 2
