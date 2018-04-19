@@ -14,8 +14,6 @@ from scipy.ndimage.filters import uniform_filter
 
 class Reconstruction(object):
     def __init__(self):
-        #What does this call to super do, and why is it necessary?
-        #super(object).__init__() 
         # lambda is the wavelength in meters (i.e. 405nm = UV light)
         self.lmbda = 625e-9
         self.UpsampleFactor = 2
@@ -33,7 +31,7 @@ class Reconstruction(object):
         x_size = ((2 ** self.UpsampleFactor) * data.shape[0]) - (2 ** (self.UpsampleFactor) - 1)
         y_size = ((2 ** self.UpsampleFactor) * data.shape[1]) - (2 ** (self.UpsampleFactor) - 1)
         data = data.astype("float32")
-        upsampled = scipy.ndimage.zoom(data, [x_size / data.shape[0], y_size / data.shape[1]], order=3)
+        upsampled = scipy.ndimage.zoom(data, [float(x_size) /data.shape[0], float(y_size) / data.shape[1]], order=3)
         self.debug_save_mat(upsampled, 'upsampledPy')
         return upsampled, dx2
 
@@ -89,7 +87,7 @@ class Reconstruction(object):
         Recon1 = ift2(mul(F2, Gbp), dfx, dfy)
 
         # np.abs(np.real(Recon1))
-        support = self.window_stdev(mul(np.abs(Recon1), np.cos(np.angle(Recon1))), self.std_filter_size / 2)
+        support = self.window_stdev(mul(np.abs(Recon1), np.cos(np.angle(Recon1))), float(self.std_filter_size) / 2)
         self.debug_save_mat(support, 'supportStdPy' + str(self.std_filter_size))
 
         support = np.where(support > self.Threshold_objsupp, 1, 0)
@@ -148,7 +146,7 @@ class Reconstruction(object):
 
     def window_stdev(self, arr, radius):
         diameter = int(round(radius * 2))
-        radius = int(round(radius))
+        radius = int(np.floor(radius))
         c1 = uniform_filter(arr, diameter, mode='constant', origin=-radius)
         c2 = uniform_filter(arr * arr, diameter, mode='constant', origin=-radius)
         c_std = ((c2 - c1 * c1) ** .5)[:-diameter + 1, :-diameter + 1]
